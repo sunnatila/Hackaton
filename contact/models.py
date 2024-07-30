@@ -10,7 +10,7 @@ class Contact(models.Model):
     )
 
     fullname = models.CharField(max_length=100)
-    phone = models.CharField(max_length=14)
+    phone = models.CharField(max_length=14, unique=True)
     dev_type = models.CharField(max_length=9, choices=DEVELOPER_TYPE)
     status = models.CharField(max_length=255, blank=True)
 

@@ -8,6 +8,16 @@ class ContactSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('status',)
 
+    def validate(self, data):
+        phone = data.get('phone', '')
+        # Agar telefon raqam faqat raqamlar bo'lsa, +998 ni qo'shamiz
+        if phone.isdigit():
+            data['phone'] = '+998' + phone.lstrip('0')
+        # Agar telefon raqamda prefiks mavjud bo'lsa, faqat +998 qo'shamiz
+        elif not phone.startswith('+998'):
+            data['phone'] = '+998' + phone.lstrip('+998')
+        return data
+
     def validate_dev_type(self, value):
         valid_dev_types = dict(Contact.DEVELOPER_TYPE).keys()
         if value not in valid_dev_types:
