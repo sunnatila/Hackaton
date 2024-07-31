@@ -1,6 +1,7 @@
-from django.db import models
-from rest_framework.exceptions import ValidationError
+# models.py
 
+from django.db import models, transaction
+from rest_framework.exceptions import ValidationError
 
 class Contact(models.Model):
     DEVELOPER_TYPE = (
@@ -26,28 +27,28 @@ class Contact(models.Model):
 class Group(models.Model):
     backend_dev = models.ForeignKey(
         Contact,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='backend_groups',
         null=True,
         blank=True
     )
     frontend_dev = models.ForeignKey(
         Contact,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='frontend_dev_groups',
         null=True,
         blank=True
     )
     frontend_dev2 = models.ForeignKey(
         Contact,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='frontend_dev2_groups',
         null=True,
         blank=True
     )
     designer = models.ForeignKey(
         Contact,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='designer_groups',
         null=True,
         blank=True
@@ -60,11 +61,18 @@ class Group(models.Model):
 
     def save(self, *args, **kwargs):
         if Group.objects.count() >= 6 and not self.pk:
-            raise ValidationError("Only 6 groups can be created.")
+            raise ValidationError("Faqat 6 ta guruh yaratilishi mumkin.")
+
+        if not self.pk:
+            last_group = Group.objects.order_by('-id').first()
+            if last_group:
+                self.id = last_group.id + 1
+            else:
+                self.id = 1
+
         super().save(*args, **kwargs)
 
     class Meta:
         verbose_name_plural = 'Guruhlar'
         verbose_name = 'Guruh '
-
         db_table = 'groups'

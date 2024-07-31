@@ -1,6 +1,6 @@
+
 from rest_framework import serializers
 from .models import Contact, Group
-
 
 class ContactSerializer(serializers.ModelSerializer):
     class Meta:
@@ -8,51 +8,65 @@ class ContactSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('status',)
 
+
     def validate(self, data):
         phone = data.get('phone', '')
-        # Agar telefon raqam faqat raqamlar bo'lsa, +998 ni qo'shamiz
-        if phone.isdigit():
-            data['phone'] = '+998' + phone.lstrip('0')
-        # Agar telefon raqamda prefiks mavjud bo'lsa, faqat +998 qo'shamiz
-        elif not phone.startswith('+998'):
-            data['phone'] = '+998' + phone.lstrip('+998')
+        if not phone:
+            raise serializers.ValidationError({"status": "Telefon raqami kiritilishi shart."})
+
+        if phone.startswith('+998'):
+            formatted_phone = phone
+        elif phone.isdigit():
+            formatted_phone = '+998' + phone.lstrip('0')
+        else:
+            raise serializers.ValidationError("Telefon raqami noto'g'ri formatda.")
+
+        data['phone'] = formatted_phone
+
+        # Validate dev_type
+        valid_dev_types = [choice[0] for choice in Contact.DEVELOPER_TYPE]
+        if data.get('dev_type') not in valid_dev_types:
+            raise serializers.ValidationError(f"Yaroqsiz dev_type. Yaroqli turlar: {', '.join(valid_dev_types)}")
+
         return data
 
-    def validate_dev_type(self, value):
-        valid_dev_types = dict(Contact.DEVELOPER_TYPE).keys()
-        if value not in valid_dev_types:
-            raise serializers.ValidationError(f"Invalid dev_type. Valid options are: {', '.join(valid_dev_types)}")
-        return value
-
     def create(self, validated_data):
-        # Check if there's a spot available in any group
-        contact = Contact(**validated_data)
-        group = self.check_group_availability(contact)
+        phone = validated_data.get('phone')
+        dev_type = validated_data.get('dev_type')
 
-        # If no group is available, return error message without saving the contact
-        if group is None:
-            raise serializers.ValidationError(detail={
-                'status': 'Barcha joylar o\'zlashtirilgan, bo\'sh joy mavjud emas.'
+        # Check if a contact with this phone number already exists
+        existing_contact = Contact.objects.filter(phone=phone).first()
+        if existing_contact:
+            existing_contact.status = "Bu telefon raqamli foydalanuvchi mavjud"
+            existing_contact.save()
+            raise serializers.ValidationError({
+                'status': "Bu telefon raqamli foydalanuvchi mavjud"
             })
 
-        # Save the contact if a spot is available
-        contact.save()
+        # Create new contact
+        contact = Contact.objects.create(**validated_data)
 
-        # Assign the contact to the appropriate group
+        # Check group availability and assign contact
+        group = self.check_group_availability(contact)
+        if group is None:
+            raise serializers.ValidationError({
+                'status': "Barcha joylar o'zlashtirilgan, bo'sh joy mavjud emas."
+            })
+
         self.assign_to_group(contact, group)
-
         return contact
 
     def check_group_availability(self, contact):
-        group = None
         if contact.dev_type == 'Frontend':
             group = Group.objects.filter(frontend_dev=None).first() or Group.objects.filter(frontend_dev2=None).first()
         elif contact.dev_type == 'Backend':
             group = Group.objects.filter(backend_dev=None).first()
         elif contact.dev_type == 'Designer':
             group = Group.objects.filter(designer=None).first()
+        else:
+            group = None
 
-        # If no available group is found and there are already 6 groups, create a new group
+        # If no group is available and there are less than 6 groups, create a new group
         if not group:
             if Group.objects.count() < 6:
                 group = Group.objects.create(
@@ -62,7 +76,7 @@ class ContactSerializer(serializers.ModelSerializer):
                     designer=None
                 )
             else:
-                return None
+                group = None
 
         return group
 
@@ -77,9 +91,24 @@ class ContactSerializer(serializers.ModelSerializer):
         elif contact.dev_type == 'Designer':
             group.designer = contact
 
-        # Save the updated group
         group.save()
-
-        # Set status to success
-        contact.status = "Siz hackaton ga muvaffaqiyatli qoshildingiz"
+        contact.status = "Siz hackaton ga muvaffaqiyatli qo'shildingiz"
         contact.save()
+
+
+class GroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = '__all__'
+
+    def validate(self, data):
+        # Guruh yaratishda faqat 6 ta guruh bo'lishi kerak
+        if not self.instance and Group.objects.count() >= 6:
+            raise serializers.ValidationError("Faqat 6 ta guruh yaratilishi mumkin.")
+        else:
+            return data
+
+    def create(self, validated_data):
+        group = Group(**validated_data)
+        group.save()
+        return group
